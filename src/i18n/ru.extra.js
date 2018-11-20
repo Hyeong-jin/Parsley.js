@@ -1,9 +1,14 @@
-window.ParsleyConfig = window.ParsleyConfig || {};
-window.ParsleyConfig.i18n = window.ParsleyConfig.i18n || {};
+// Validation errors messages for Parsley
+import Parsley from '../parsley';
 
-window.ParsleyConfig.i18n.ru = $.extend(window.ParsleyConfig.i18n.ru || {}, {
+Parsley.addMessages('ru', {
   dateiso:  "Это значение должно быть корректной датой (ГГГГ-ММ-ДД).",
   minwords: "Это значение должно содержать не менее %s слов.",
   maxwords: "Это значение должно содержать не более %s слов.",
-  words:    "Это значение должно содержать от %s до %s слов."
+  words:    "Это значение должно содержать от %s до %s слов.",
+  gt:       "Это значение должно быть больше.",
+  gte:      "Это значение должно быть больше или равно.",
+  lt:       "Это значение должно быть меньше.",
+  lte:      "Это значение должно быть меньше или равно.",
+  notequalto: "Это значение должно отличаться."
 });

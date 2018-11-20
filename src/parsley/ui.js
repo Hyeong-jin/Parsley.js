@@ -1,414 +1,400 @@
-define('parsley/ui', [
-  'parsley/utils'
-], function (ParsleyUtils) {
-  var ParsleyUI = function (options) {
-    this.__class__ = 'ParsleyUI';
+import $ from 'jquery';
+import Utils from './utils';
+
+var UI = {};
+
+var diffResults = function (newResult, oldResult, deep) {
+  var added = [];
+  var kept = [];
+
+  for (var i = 0; i < newResult.length; i++) {
+    var found = false;
+
+    for (var j = 0; j < oldResult.length; j++)
+      if (newResult[i].assert.name === oldResult[j].assert.name) {
+        found = true;
+        break;
+      }
+
+    if (found)
+      kept.push(newResult[i]);
+    else
+      added.push(newResult[i]);
+  }
+
+  return {
+    kept: kept,
+    added: added,
+    removed: !deep ? diffResults(oldResult, newResult, true).added : []
   };
+};
 
-  ParsleyUI.prototype = {
-    listen: function () {
-      $.listen('parsley:form:init', this, this.setupForm);
-      $.listen('parsley:field:init', this, this.setupField);
+UI.Form = {
 
-      $.listen('parsley:field:validated', this, this.reflow);
-      $.listen('parsley:form:validated', this, this.focus);
+  _actualizeTriggers: function () {
+    this.$element.on('submit.Parsley', evt => { this.onSubmitValidate(evt); });
+    this.$element.on('click.Parsley', Utils._SubmitSelector, evt => { this.onSubmitButton(evt); });
 
-      $.listen('parsley:field:reset', this, this.reset);
+    // UI could be disabled
+    if (false === this.options.uiEnabled)
+      return;
 
-      $.listen('parsley:form:destroy', this, this.destroy);
-      $.listen('parsley:field:destroy', this, this.destroy);
+    this.element.setAttribute('novalidate', '');
+  },
 
-      return this;
-    },
+  focus: function () {
+    this._focusedField = null;
 
-    reflow: function (fieldInstance) {
-      // If this field has not an active UI (case for multiples) don't bother doing something
-      if ('undefined' === typeof fieldInstance._ui || false === fieldInstance._ui.active)
-        return;
+    if (true === this.validationResult || 'none' === this.options.focus)
+      return null;
 
-      // Diff between two validation results
-      var diff = this._diff(fieldInstance.validationResult, fieldInstance._ui.lastValidationResult);
+    for (var i = 0; i < this.fields.length; i++) {
+      var field = this.fields[i];
+      if (true !== field.validationResult && field.validationResult.length > 0 && 'undefined' === typeof field.options.noFocus) {
+        this._focusedField = field.$element;
+        if ('first' === this.options.focus)
+          break;
+      }
+    }
 
-      // Then store current validation result for next reflow
-      fieldInstance._ui.lastValidationResult = fieldInstance.validationResult;
+    if (null === this._focusedField)
+      return null;
 
-      // Field have been validated at least once if here. Useful for binded key events..
-      fieldInstance._ui.validatedOnce = true;
+    return this._focusedField.focus();
+  },
 
-      // Handle valid / invalid / none field class
-      this.manageStatusClass(fieldInstance);
+  _destroyUI: function () {
+    // Reset all event listeners
+    this.$element.off('.Parsley');
+  }
 
-      // Add, remove, updated errors messages
-      this.manageErrorsMessages(fieldInstance, diff);
+};
 
-      // Triggers impl
-      this.actualizeTriggers(fieldInstance);
+UI.Field = {
 
-      // If field is not valid for the first time, bind keyup trigger to ease UX and quickly inform user
-      if ((diff.kept.length || diff.added.length) && 'undefined' === typeof fieldInstance._ui.failedOnce)
-        this.manageFailingFieldTrigger(fieldInstance);
-    },
+  _reflowUI: function () {
+    this._buildUI();
 
-    // Returns an array of field's error message(s)
-    getErrorsMessages: function (fieldInstance) {
-      // No error message, field is valid
-      if (true === fieldInstance.validationResult)
-        return [];
+    // If this field doesn't have an active UI don't bother doing something
+    if (!this._ui)
+      return;
 
-      var messages = [];
+    // Diff between two validation results
+    var diff = diffResults(this.validationResult, this._ui.lastValidationResult);
 
-      for (var i = 0; i < fieldInstance.validationResult.length; i++)
-        messages.push(this._getErrorMessage(fieldInstance, fieldInstance.validationResult[i].assert));
+    // Then store current validation result for next reflow
+    this._ui.lastValidationResult = this.validationResult;
 
-      return messages;
-    },
+    // Handle valid / invalid / none field class
+    this._manageStatusClass();
 
-    manageStatusClass: function (fieldInstance) {
-      if (true === fieldInstance.validationResult)
-        this._successClass(fieldInstance);
-      else if (fieldInstance.validationResult.length > 0)
-        this._errorClass(fieldInstance);
-      else
-        this._resetClass(fieldInstance);
-    },
+    // Add, remove, updated errors messages
+    this._manageErrorsMessages(diff);
 
-    manageErrorsMessages: function (fieldInstance, diff) {
-      if ('undefined' !== typeof fieldInstance.options.errorsMessagesDisabled)
-        return;
+    // Triggers impl
+    this._actualizeTriggers();
 
-      // Case where we have errorMessage option that configure an unique field error message, regardless failing validators
-      if ('undefined' !== typeof fieldInstance.options.errorMessage) {
-        if ((diff.added.length || diff.kept.length)) {
-          if (0 === fieldInstance._ui.$errorsWrapper.find('.parsley-custom-error-message').length)
-            fieldInstance._ui.$errorsWrapper
-              .append($(fieldInstance.options.errorTemplate)
-              .addClass('parsley-custom-error-message'));
+    // If field is not valid for the first time, bind keyup trigger to ease UX and quickly inform user
+    if ((diff.kept.length || diff.added.length) && !this._failedOnce) {
+      this._failedOnce = true;
+      this._actualizeTriggers();
+    }
+  },
 
-          return fieldInstance._ui.$errorsWrapper
-            .addClass('filled')
-            .find('.parsley-custom-error-message')
-            .html(fieldInstance.options.errorMessage);
-        }
+  // Returns an array of field's error message(s)
+  getErrorsMessages: function () {
+    // No error message, field is valid
+    if (true === this.validationResult)
+      return [];
 
-        return fieldInstance._ui.$errorsWrapper
-          .removeClass('filled')
+    var messages = [];
+
+    for (var i = 0; i < this.validationResult.length; i++)
+      messages.push(this.validationResult[i].errorMessage ||
+       this._getErrorMessage(this.validationResult[i].assert));
+
+    return messages;
+  },
+
+  // It's a goal of Parsley that this method is no longer required [#1073]
+  addError: function (name, {message, assert, updateClass = true} = {}) {
+    this._buildUI();
+    this._addError(name, {message, assert});
+
+    if (updateClass)
+      this._errorClass();
+  },
+
+  // It's a goal of Parsley that this method is no longer required [#1073]
+  updateError: function (name, {message, assert, updateClass = true} = {}) {
+    this._buildUI();
+    this._updateError(name, {message, assert});
+
+    if (updateClass)
+      this._errorClass();
+  },
+
+  // It's a goal of Parsley that this method is no longer required [#1073]
+  removeError: function (name, {updateClass = true} = {}) {
+    this._buildUI();
+    this._removeError(name);
+
+    // edge case possible here: remove a standard Parsley error that is still failing in this.validationResult
+    // but highly improbable cuz' manually removing a well Parsley handled error makes no sense.
+    if (updateClass)
+      this._manageStatusClass();
+  },
+
+  _manageStatusClass: function () {
+    if (this.hasConstraints() && this.needsValidation() && true === this.validationResult)
+      this._successClass();
+    else if (this.validationResult.length > 0)
+      this._errorClass();
+    else
+      this._resetClass();
+  },
+
+  _manageErrorsMessages: function (diff) {
+    if ('undefined' !== typeof this.options.errorsMessagesDisabled)
+      return;
+
+    // Case where we have errorMessage option that configure an unique field error message, regardless failing validators
+    if ('undefined' !== typeof this.options.errorMessage) {
+      if ((diff.added.length || diff.kept.length)) {
+        this._insertErrorWrapper();
+
+        if (0 === this._ui.$errorsWrapper.find('.parsley-custom-error-message').length)
+          this._ui.$errorsWrapper
+            .append(
+              $(this.options.errorTemplate)
+              .addClass('parsley-custom-error-message')
+            );
+
+        return this._ui.$errorsWrapper
+          .addClass('filled')
           .find('.parsley-custom-error-message')
-          .remove();
+          .html(this.options.errorMessage);
       }
 
-      // Show, hide, update failing constraints messages
-      for (var i = 0; i < diff.removed.length; i++)
-        this.removeError(fieldInstance, diff.removed[i].assert.name, true);
-
-      for (i = 0; i < diff.added.length; i++)
-        this.addError(fieldInstance, diff.added[i].assert.name, undefined, diff.added[i].assert, true);
-
-      for (i = 0; i < diff.kept.length; i++)
-        this.updateError(fieldInstance, diff.kept[i].assert.name, undefined, diff.kept[i].assert, true);
-    },
-
-    // TODO: strange API here, intuitive for manual usage with addError(pslyInstance, 'foo', 'bar')
-    // but a little bit complex for above internal usage, with forced undefined parametter..
-    addError: function (fieldInstance, name, message, assert, doNotUpdateClass) {
-      fieldInstance._ui.$errorsWrapper
-        .addClass('filled')
-        .append($(fieldInstance.options.errorTemplate)
-        .addClass('parsley-' + name)
-        .html(message || this._getErrorMessage(fieldInstance, assert)));
-
-      if (true !== doNotUpdateClass)
-        this._errorClass(fieldInstance);
-    },
-
-    // Same as above
-    updateError: function (fieldInstance, name, message, assert, doNotUpdateClass) {
-      fieldInstance._ui.$errorsWrapper
-        .addClass('filled')
-        .find('.parsley-' + name)
-        .html(message || this._getErrorMessage(fieldInstance, assert));
-
-      if (true !== doNotUpdateClass)
-        this._errorClass(fieldInstance);
-    },
-
-    // Same as above twice
-    removeError: function (fieldInstance, name, doNotUpdateClass) {
-      fieldInstance._ui.$errorsWrapper
+      return this._ui.$errorsWrapper
         .removeClass('filled')
-        .find('.parsley-' + name)
+        .find('.parsley-custom-error-message')
         .remove();
+    }
 
-      // edge case possible here: remove a standard Parsley error that is still failing in fieldInstance.validationResult
-      // but highly improbable cuz' manually removing a well Parsley handled error makes no sense.
-      if (true !== doNotUpdateClass)
-        this.manageStatusClass(fieldInstance);
-    },
+    // Show, hide, update failing constraints messages
+    for (var i = 0; i < diff.removed.length; i++)
+      this._removeError(diff.removed[i].assert.name);
 
-    focus: function (formInstance) {
-      if (true === formInstance.validationResult || 'none' === formInstance.options.focus)
-        return formInstance._focusedField = null;
+    for (i = 0; i < diff.added.length; i++)
+      this._addError(diff.added[i].assert.name, {message: diff.added[i].errorMessage, assert: diff.added[i].assert});
 
-      formInstance._focusedField = null;
+    for (i = 0; i < diff.kept.length; i++)
+      this._updateError(diff.kept[i].assert.name, {message: diff.kept[i].errorMessage, assert: diff.kept[i].assert});
+  },
 
-      for (var i = 0; i < formInstance.fields.length; i++)
-        if (true !== formInstance.fields[i].validationResult && formInstance.fields[i].validationResult.length > 0 && 'undefined' === typeof formInstance.fields[i].options.noFocus) {
-          if ('first' === formInstance.options.focus) {
-            formInstance._focusedField = formInstance.fields[i].$element;
-            return formInstance._focusedField.focus();
-          }
 
-          formInstance._focusedField = formInstance.fields[i].$element;
-        }
+  _addError: function (name, {message, assert}) {
+    this._insertErrorWrapper();
+    this._ui.$errorClassHandler
+      .attr('aria-describedby', this._ui.errorsWrapperId);
+    this._ui.$errorsWrapper
+      .addClass('filled')
+      .append(
+        $(this.options.errorTemplate)
+        .addClass('parsley-' + name)
+        .html(message || this._getErrorMessage(assert))
+      );
+  },
 
-      if (null === formInstance._focusedField)
-        return null;
+  _updateError: function (name, {message, assert}) {
+    this._ui.$errorsWrapper
+      .addClass('filled')
+      .find('.parsley-' + name)
+      .html(message || this._getErrorMessage(assert));
+  },
 
-      return formInstance._focusedField.focus();
-    },
+  _removeError: function (name) {
+    this._ui.$errorClassHandler
+      .removeAttr('aria-describedby');
+    this._ui.$errorsWrapper
+      .removeClass('filled')
+      .find('.parsley-' + name)
+      .remove();
+  },
 
-    _getErrorMessage: function (fieldInstance, constraint) {
-      var customConstraintErrorMessage = constraint.name + 'Message';
+  _getErrorMessage: function (constraint) {
+    var customConstraintErrorMessage = constraint.name + 'Message';
 
-      if ('undefined' !== typeof fieldInstance.options[customConstraintErrorMessage])
-        return window.ParsleyValidator.formatMessage(fieldInstance.options[customConstraintErrorMessage], constraint.requirements);
+    if ('undefined' !== typeof this.options[customConstraintErrorMessage])
+      return window.Parsley.formatMessage(this.options[customConstraintErrorMessage], constraint.requirements);
 
-      return window.ParsleyValidator.getErrorMessage(constraint);
-    },
+    return window.Parsley.getErrorMessage(constraint);
+  },
 
-    _diff: function (newResult, oldResult, deep) {
-      var
-        added = [],
-        kept = [];
+  _buildUI: function () {
+    // UI could be already built or disabled
+    if (this._ui || false === this.options.uiEnabled)
+      return;
 
-      for (var i = 0; i < newResult.length; i++) {
-        var found = false;
+    var _ui = {};
 
-        for (var j = 0; j < oldResult.length; j++)
-          if (newResult[i].assert.name === oldResult[j].assert.name) {
-            found = true;
-            break;
-          }
+    // Give field its Parsley id in DOM
+    this.element.setAttribute(this.options.namespace + 'id', this.__id__);
 
-        if (found)
-          kept.push(newResult[i]);
-        else
-          added.push(newResult[i]);
-      }
+    /** Generate important UI elements and store them in this **/
+    // $errorClassHandler is the $element that woul have parsley-error and parsley-success classes
+    _ui.$errorClassHandler = this._manageClassHandler();
 
-      return {
-        kept: kept,
-        added: added,
-        removed: !deep ? this._diff(oldResult, newResult, true).added : []
-      };
-    },
+    // $errorsWrapper is a div that would contain the various field errors, it will be appended into $errorsContainer
+    _ui.errorsWrapperId = 'parsley-id-' + (this.options.multiple ? 'multiple-' + this.options.multiple : this.__id__);
+    _ui.$errorsWrapper = $(this.options.errorsWrapper).attr('id', _ui.errorsWrapperId);
 
-    setupForm: function (formInstance) {
-      formInstance.$element.on('submit.Parsley', false, $.proxy(formInstance.onSubmitValidate, formInstance));
+    // ValidationResult UI storage to detect what have changed bwt two validations, and update DOM accordingly
+    _ui.lastValidationResult = [];
+    _ui.validationInformationVisible = false;
 
-      // UI could be disabled
-      if (false === formInstance.options.uiEnabled)
-        return;
+    // Store it in this for later
+    this._ui = _ui;
+  },
 
-      formInstance.$element.attr('novalidate', '');
-    },
+  // Determine which element will have `parsley-error` and `parsley-success` classes
+  _manageClassHandler: function () {
+    // Class handled could also be determined by function given in Parsley options
+    if ('string' === typeof this.options.classHandler && $(this.options.classHandler).length)
+      return $(this.options.classHandler);
 
-    setupField: function (fieldInstance) {
-      var _ui = { active: false };
+    // Class handled could also be determined by function given in Parsley options
+    var $handlerFunction = this.options.classHandler;
 
-      // UI could be disabled
-      if (false === fieldInstance.options.uiEnabled)
-        return;
+    // It might also be the function name of a global function
+    if ('string' === typeof this.options.classHandler && 'function' === typeof window[this.options.classHandler])
+      $handlerFunction = window[this.options.classHandler];
 
-      _ui.active = true;
-
-      // Give field its Parsley id in DOM
-      fieldInstance.$element.attr(fieldInstance.options.namespace + 'id', fieldInstance.__id__);
-
-      /** Generate important UI elements and store them in fieldInstance **/
-      // $errorClassHandler is the $element that woul have parsley-error and parsley-success classes
-      _ui.$errorClassHandler = this._manageClassHandler(fieldInstance);
-
-      // $errorsWrapper is a div that would contain the various field errors, it will be appended into $errorsContainer
-      _ui.errorsWrapperId = 'parsley-id-' + ('undefined' !== typeof fieldInstance.options.multiple ? 'multiple-' + fieldInstance.options.multiple : fieldInstance.__id__);
-      _ui.$errorsWrapper = $(fieldInstance.options.errorsWrapper).attr('id', _ui.errorsWrapperId);
-
-      // ValidationResult UI storage to detect what have changed bwt two validations, and update DOM accordingly
-      _ui.lastValidationResult = [];
-      _ui.validatedOnce = false;
-      _ui.validationInformationVisible = false;
-
-      // Store it in fieldInstance for later
-      fieldInstance._ui = _ui;
-
-      // Stops excluded inputs from getting errorContainer added
-      if( !fieldInstance.$element.is(fieldInstance.options.excluded) ) {
-        /** Mess with DOM now **/
-        this._insertErrorWrapper(fieldInstance);
-      }
-
-      // Bind triggers first time
-      this.actualizeTriggers(fieldInstance);
-    },
-
-    // Determine which element will have `parsley-error` and `parsley-success` classes
-    _manageClassHandler: function (fieldInstance) {
-      // An element selector could be passed through DOM with `data-parsley-class-handler=#foo`
-      if ('string' === typeof fieldInstance.options.classHandler && $(fieldInstance.options.classHandler).length)
-        return $(fieldInstance.options.classHandler);
-
-      // Class handled could also be determined by function given in Parsley options
-      var $handler = fieldInstance.options.classHandler(fieldInstance);
+    if ('function' === typeof $handlerFunction) {
+      var $handler = $handlerFunction.call(this, this);
 
       // If this function returned a valid existing DOM element, go for it
       if ('undefined' !== typeof $handler && $handler.length)
         return $handler;
-
-      // Otherwise, if simple element (input, texatrea, select..) it will perfectly host the classes
-      if ('undefined' === typeof fieldInstance.options.multiple || fieldInstance.$element.is('select'))
-        return fieldInstance.$element;
-
-      // But if multiple element (radio, checkbox), that would be their parent
-      return fieldInstance.$element.parent();
-    },
-
-    _insertErrorWrapper: function (fieldInstance) {
-      var $errorsContainer;
-
-      if ('string' === typeof fieldInstance.options.errorsContainer) {
-        if ($(fieldInstance.options.errorsContainer).length)
-          return $(fieldInstance.options.errorsContainer).append(fieldInstance._ui.$errorsWrapper);
-        else if (window.console && window.console.warn)
-          window.console.warn('The errors container `' + fieldInstance.options.errorsContainer + '` does not exist in DOM');
-      }
-      else if ('function' === typeof fieldInstance.options.errorsContainer)
-        $errorsContainer = fieldInstance.options.errorsContainer(fieldInstance);
-
-      if ('undefined' !== typeof $errorsContainer && $errorsContainer.length)
-        return $errorsContainer.append(fieldInstance._ui.$errorsWrapper);
-
-      return 'undefined' === typeof fieldInstance.options.multiple ? fieldInstance.$element.after(fieldInstance._ui.$errorsWrapper) : fieldInstance.$element.parent().after(fieldInstance._ui.$errorsWrapper);
-    },
-
-    actualizeTriggers: function (fieldInstance) {
-      var that = this;
-
-      // Remove Parsley events already binded on this field
-      if (fieldInstance.options.multiple)
-        $('[' + fieldInstance.options.namespace + 'multiple="' + fieldInstance.options.multiple + '"]').each(function () {
-          $(this).off('.Parsley');
-        });
-      else
-        fieldInstance.$element.off('.Parsley');
-
-      // If no trigger is set, all good
-      if (false === fieldInstance.options.trigger)
-        return;
-
-      var triggers = fieldInstance.options.trigger.replace(/^\s+/g , '').replace(/\s+$/g , '');
-
-      if ('' === triggers)
-        return;
-
-      // Bind fieldInstance.eventValidate if exists (for parsley.ajax for example), ParsleyUI.eventValidate otherwise
-      if (fieldInstance.options.multiple)
-        $('[' + fieldInstance.options.namespace + 'multiple="' + fieldInstance.options.multiple + '"]').each(function () {
-          $(this).on(
-            triggers.split(' ').join('.Parsley ') + '.Parsley',
-            false,
-            $.proxy('function' === typeof fieldInstance.eventValidate ? fieldInstance.eventValidate : that.eventValidate, fieldInstance));
-        });
-      else
-        fieldInstance.$element
-          .on(
-            triggers.split(' ').join('.Parsley ') + '.Parsley',
-            false,
-            $.proxy('function' === typeof fieldInstance.eventValidate ? fieldInstance.eventValidate : this.eventValidate, fieldInstance));
-    },
-
-    // Called through $.proxy with fieldInstance. `this` context is ParsleyField
-    eventValidate: function(event) {
-      // For keyup, keypress, keydown.. events that could be a little bit obstrusive
-      // do not validate if val length < min threshold on first validation. Once field have been validated once and info
-      // about success or failure have been displayed, always validate with this trigger to reflect every yalidation change.
-      if (new RegExp('key').test(event.type))
-        if (!this._ui.validationInformationVisible && this.getValue().length <= this.options.validationThreshold)
-          return;
-
-      this._ui.validatedOnce = true;
-      this.validate();
-    },
-
-    manageFailingFieldTrigger: function (fieldInstance) {
-      fieldInstance._ui.failedOnce = true;
-
-      // Radio and checkboxes fields must bind every field multiple
-      if (fieldInstance.options.multiple)
-        $('[' + fieldInstance.options.namespace + 'multiple="' + fieldInstance.options.multiple + '"]').each(function () {
-          if (!new RegExp('change', 'i').test($(this).parsley().options.trigger || ''))
-            return $(this).on('change.ParsleyFailedOnce', false, $.proxy(fieldInstance.validate, fieldInstance));
-        });
-
-      // Select case
-      if (fieldInstance.$element.is('select'))
-        if (!new RegExp('change', 'i').test(fieldInstance.options.trigger || ''))
-          return fieldInstance.$element.on('change.ParsleyFailedOnce', false, $.proxy(fieldInstance.validate, fieldInstance));
-
-      // All other inputs fields
-      if (!new RegExp('keyup', 'i').test(fieldInstance.options.trigger || ''))
-        return fieldInstance.$element.on('keyup.ParsleyFailedOnce', false, $.proxy(fieldInstance.validate, fieldInstance));
-    },
-
-    reset: function (parsleyInstance) {
-      // Reset all event listeners
-      parsleyInstance.$element.off('.Parsley');
-      parsleyInstance.$element.off('.ParsleyFailedOnce');
-
-      // Nothing to do if UI never initialized for this field
-      if ('undefined' === typeof parsleyInstance._ui)
-        return;
-
-      if ('ParsleyForm' === parsleyInstance.__class__)
-        return;
-
-      // Reset all errors' li
-      parsleyInstance._ui.$errorsWrapper
-        .removeClass('filled')
-        .children()
-        .remove();
-
-      // Reset validation class
-      this._resetClass(parsleyInstance);
-
-      // Reset validation flags and last validation result
-      parsleyInstance._ui.validatedOnce = false;
-      parsleyInstance._ui.lastValidationResult = [];
-      parsleyInstance._ui.validationInformationVisible = false;
-    },
-
-    destroy: function (parsleyInstance) {
-      this.reset(parsleyInstance);
-
-      if ('ParsleyForm' === parsleyInstance.__class__)
-        return;
-
-      if ('undefined' !== typeof parsleyInstance._ui)
-        parsleyInstance._ui.$errorsWrapper.remove();
-
-      delete parsleyInstance._ui;
-    },
-
-    _successClass: function (fieldInstance) {
-      fieldInstance._ui.validationInformationVisible = true;
-      fieldInstance._ui.$errorClassHandler.removeClass(fieldInstance.options.errorClass).addClass(fieldInstance.options.successClass);
-    },
-    _errorClass: function (fieldInstance) {
-      fieldInstance._ui.validationInformationVisible = true;
-      fieldInstance._ui.$errorClassHandler.removeClass(fieldInstance.options.successClass).addClass(fieldInstance.options.errorClass);
-    },
-    _resetClass: function (fieldInstance) {
-      fieldInstance._ui.$errorClassHandler.removeClass(fieldInstance.options.successClass).removeClass(fieldInstance.options.errorClass);
+    } else if ('object' === typeof $handlerFunction && $handlerFunction instanceof jQuery && $handlerFunction.length) {
+      return $handlerFunction;
+    } else if ($handlerFunction) {
+      Utils.warn('The class handler `' + $handlerFunction + '` does not exist in DOM nor as a global JS function');
     }
-  };
 
-  return ParsleyUI;
-});
+    return this._inputHolder();
+  },
+
+  _inputHolder: function() {
+    // if simple element (input, texatrea, select...) it will perfectly host the classes and precede the error container
+    if (!this.options.multiple || this.element.nodeName === 'SELECT')
+      return this.$element;
+
+    // But if multiple element (radio, checkbox), that would be their parent
+    return this.$element.parent();
+  },
+
+  _insertErrorWrapper: function () {
+    var $errorsContainer = this.options.errorsContainer;
+
+    // Nothing to do if already inserted
+    if (0 !== this._ui.$errorsWrapper.parent().length)
+      return this._ui.$errorsWrapper.parent();
+
+    if ('string' === typeof $errorsContainer) {
+      if ($($errorsContainer).length)
+        return $($errorsContainer).append(this._ui.$errorsWrapper);
+      else if ('function' === typeof window[$errorsContainer])
+        $errorsContainer = window[$errorsContainer];
+      else
+        Utils.warn('The errors container `' + $errorsContainer + '` does not exist in DOM nor as a global JS function');
+    }
+
+    if ('function' === typeof $errorsContainer)
+      $errorsContainer = $errorsContainer.call(this, this);
+
+    if ('object' === typeof $errorsContainer && $errorsContainer.length)
+      return $errorsContainer.append(this._ui.$errorsWrapper);
+
+    return this._inputHolder().after(this._ui.$errorsWrapper);
+  },
+
+  _actualizeTriggers: function () {
+    var $toBind = this._findRelated();
+    var trigger;
+
+    // Remove Parsley events already bound on this field
+    $toBind.off('.Parsley');
+    if (this._failedOnce)
+      $toBind.on(Utils.namespaceEvents(this.options.triggerAfterFailure, 'Parsley'), () => {
+        this._validateIfNeeded();
+      });
+    else if (trigger = Utils.namespaceEvents(this.options.trigger, 'Parsley')) {
+      $toBind.on(trigger, event => {
+        this._validateIfNeeded(event);
+      });
+    }
+  },
+
+  _validateIfNeeded: function (event) {
+    // For keyup, keypress, keydown, input... events that could be a little bit obstrusive
+    // do not validate if val length < min threshold on first validation. Once field have been validated once and info
+    // about success or failure have been displayed, always validate with this trigger to reflect every yalidation change.
+    if (event && /key|input/.test(event.type))
+      if (!(this._ui && this._ui.validationInformationVisible) && this.getValue().length <= this.options.validationThreshold)
+        return;
+
+    if (this.options.debounce) {
+      window.clearTimeout(this._debounced);
+      this._debounced = window.setTimeout(() => this.validate(), this.options.debounce);
+    } else
+      this.validate();
+  },
+
+  _resetUI: function () {
+    // Reset all event listeners
+    this._failedOnce = false;
+    this._actualizeTriggers();
+
+    // Nothing to do if UI never initialized for this field
+    if ('undefined' === typeof this._ui)
+      return;
+
+    // Reset all errors' li
+    this._ui.$errorsWrapper
+      .removeClass('filled')
+      .children()
+      .remove();
+
+    // Reset validation class
+    this._resetClass();
+
+    // Reset validation flags and last validation result
+    this._ui.lastValidationResult = [];
+    this._ui.validationInformationVisible = false;
+  },
+
+  _destroyUI: function () {
+    this._resetUI();
+
+    if ('undefined' !== typeof this._ui)
+      this._ui.$errorsWrapper.remove();
+
+    delete this._ui;
+  },
+
+  _successClass: function () {
+    this._ui.validationInformationVisible = true;
+    this._ui.$errorClassHandler.removeClass(this.options.errorClass).addClass(this.options.successClass);
+  },
+  _errorClass: function () {
+    this._ui.validationInformationVisible = true;
+    this._ui.$errorClassHandler.removeClass(this.options.successClass).addClass(this.options.errorClass);
+  },
+  _resetClass: function () {
+    this._ui.$errorClassHandler.removeClass(this.options.successClass).removeClass(this.options.errorClass);
+  }
+};
+
+export default UI;

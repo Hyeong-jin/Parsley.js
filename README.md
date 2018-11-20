@@ -6,7 +6,7 @@ JavaScript form validation, without actually writing a single line of JavaScript
 
 ## Version
 
-2.0.5
+2.8.1
 
 ## Doc
 
@@ -14,11 +14,16 @@ See `index.html` and `doc/`
 
 ## Requirements
 
-jQuery >= 1.8
+[jQuery](https://jquery.com/) >= 1.8 (compatible with 2.x and 3.0)
+[es5-shim](https://github.com/es-shims/es5-shim) if you want need to support IE8
+
+## Questions?
+
+Please ask questions on [StackOverflow](https://stackoverflow.com/questions/ask) and be sure to include the `parsley.js` tag. Please **provide an example**, starting for example from [this jsfiddle](https://jsfiddle.net/marcandre/58vnaqur/)
 
 ## Contributing
 
-See `CONTRIBUTING.md` file
+See the [`CONTRIBUTING.md` file](https://github.com/guillaumepotier/Parsley.js/blob/master/CONTRIBUTING.md)
 
 ## Integrations
 
@@ -28,41 +33,33 @@ Some integrations are
 * [CakePHP](https://github.com/Codaxis/parsley-helper)
 * [Django](https://github.com/agiliq/django-parsley)
 * [Rails](https://github.com/mekishizufu/parsley-rails)
-* [OSSCDN by MaxCDN](http://osscdn.com/#/parsleyjs)
+* [OSSCDN by MaxCDN](https://osscdn.com/#/parsleyjs)
+* [Drupal](https://www.drupal.org/project/parsley)
 
-## Install dev environment
+## Install dev environment and running tests
 
+First time: install `npm` and:
 ```
-npm install
-npm install -g grunt-cli
-npm install -g bower
-grunt configure
-```
-
-## Build `dist/`
-
-```
-grunt build
-grunt build-all
-```
-
-## Generate annotated documentation
-
-First time:
-```
-npm install -g docco
+npm install -g gulp
 ```
 
 then
 ```
-grunt build-annotated-source
+npm install
+gulp test
+```
+
+## Build `dist/` and `doc/annotated-source`
+
+```
+gulp build
 ```
 
 ## Run tests
 
-In the browser: open `test/index.html`
+In the browser: run a server with `gulp test-browser`, then open `test/runner.html`
 
-In the terminal: `npm test`
+In the terminal: `gulp test`
 
 ## License
 

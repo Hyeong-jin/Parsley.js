@@ -1,13 +1,11 @@
-// ParsleyConfig definition if not already set
-window.ParsleyConfig = window.ParsleyConfig || {};
-window.ParsleyConfig.i18n = window.ParsleyConfig.i18n || {};
+// Validation errors messages for Parsley
+import Parsley from '../parsley';
 
-// Define then the messages
-window.ParsleyConfig.i18n['pt-br'] = $.extend(window.ParsleyConfig.i18n['pt-br'] || {}, {
+Parsley.addMessages('pt-br', {
   defaultMessage: "Este valor parece ser inválido.",
   type: {
     email:        "Este campo deve ser um email válido.",
-    url:          "Este campo deve ser uma URL válida.",
+    url:          "Este campo deve ser um URL válida.",
     number:       "Este campo deve ser um número válido.",
     integer:      "Este campo deve ser um inteiro válido.",
     digits:       "Este campo deve conter apenas dígitos.",
@@ -28,6 +26,4 @@ window.ParsleyConfig.i18n['pt-br'] = $.extend(window.ParsleyConfig.i18n['pt-br']
   equalto:        "Este valor deveria ser igual."
 });
 
-// If file is loaded after Parsley main file, auto-load locale
-if ('undefined' !== typeof window.ParsleyValidator)
-  window.ParsleyValidator.addCatalog('pt-br', window.ParsleyConfig.i18n['pt-br'], true);
+Parsley.setLocale('pt-br');

@@ -10,7 +10,7 @@
     <title>Parsley - The ultimate JavaScript form validation library</title>
 
     <!-- Bootstrap core CSS -->
-    <link href="bower_components/bootstrap/dist/css/bootstrap.css" rel="stylesheet">
+    <link href="bower_components/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet">
 
     <!-- Custom styles for this template -->
     <link href="doc/assets/docs.css" rel="stylesheet">
@@ -21,6 +21,9 @@
       <script src="https://oss.maxcdn.com/libs/respond.js/1.3.0/respond.min.js"></script>
     <![endif]-->
     <style>
+      body {
+        padding: 0px;
+      }
       .jumbotron h1 strong {
         color: #FF851B;
       }
@@ -88,7 +91,6 @@
 
   <body>
     <div class="container">
-
       <div class="masthead">
         <div class="header">
           <h3 class="text-muted"><a href="#">Parsley</a></h3>
@@ -110,8 +112,9 @@
           <li><a href="doc/index.html">Documentation</a></li>
           <li><a href="doc/download.html">Download</a></li>
           <li><a href="doc/help.html">Help</a></li>
-          <li><a href="doc/annotated-source/parsley.html">Annotated&nbsp;source</a></li>
+          <li><a href="doc/annotated-source/main.html">Annotated&nbsp;source</a></li>
           <li><a href="doc/tests.html">Tests</a></li>
+          <li><a href="doc/about.html">About</a></li>
         </ul>
       </div>
 
@@ -120,7 +123,7 @@
         <h1><em>Parsley</em>, the <strong>ultimate</strong> JavaScript <strong>form validation</strong> library</h1>
         <p class="lead">Validating forms frontend have never been so <em>powerful</em> and <em>easy</em>.</p>
         <p><a class="btn btn-lg btn-go" href="doc/index.html" role="button">Get started today</a></p>
-        <p class="version"><i class="icon glyphicon glyphicon-tag"></i>&nbsp;v2.0.5</p>
+        <p class="version"><i class="icon glyphicon glyphicon-tag"></i>&nbsp;<span class="parsley-version">v2.8.1</span></p>
       </div>
 
       <!-- Example row of columns -->
@@ -152,25 +155,25 @@
         </div>
         <div class="col-lg-4">
           <h2>Super reliable</h2>
-          <p class="argument shorter">Still <em>shipped almost bug free</em>. Parsley is <strong>strongly tested</strong>, and <strong>aimed to work on every browser since IE7.</strong></p>
+          <p class="argument shorter">Still <em>ships almost bug free</em>. Parsley is <a href="https://travis-ci.org/guillaumepotier/Parsley.js"><strong>strongly tested</strong></a>, and <strong>aims to work on every browser (including IE8).</strong></p>
           <p><a href="doc/tests.html">View tests &raquo;</a></p>
         </div>
         <div class="col-lg-4">
           <h2>Free</h2>
           <p class="argument shorter">Parsley is <strong>Open Source, MIT licensed</strong>, and developed to help everyone. It will <strong>stay that way.</strong> <a href="https://github.com/guillaumepotier/Parsley.js">Join us on Github!</a></p>
-          <p><a href="#">View license &raquo;</a></p>
+          <p><a href="https://raw.githubusercontent.com/guillaumepotier/Parsley.js/master/LICENSE">View license &raquo;</a></p>
         </div>
 
       </div>
 
       <!-- Site footer -->
       <div class="footer">
-        <p>&copy; <a href="https://twitter.com/guillaumepotier" title="Guillaume Potier on Twitter">Guillaume Potier</a> 2014 - <a href="http://wisembly.com">@Wisembly</a></p>
+        <p>&copy; <a href="https://twitter.com/guillaumepotier" title="Guillaume Potier on Twitter">Guillaume Potier</a> &amp; <a href="https://twitter.com/malafortune" title="Marc-André Lafortune on Twitter">Marc-André Lafortune</a> 2017 - <a href="http://wisembly.com">@Wisembly</a></p>
       </div>
 
     </div> <!-- /container -->
 
-    <script type="text/javascript">
+    <script>
       var _gaq = _gaq || [];
       _gaq.push(['_setAccount', 'UA-37229467-1']);
       _gaq.push(['_trackPageview']);

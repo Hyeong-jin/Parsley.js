@@ -1,109 +1,210 @@
-define('parsley/utils', function () {
-  return {
-    // Parsley DOM-API
-    // returns object from dom attributes and values
-    // if attr is given, returns bool if attr present in DOM or not
-    attr: function ($element, namespace, checkAttr) {
-      var
-        attribute,
-        obj = {},
-        msie = this.msieversion(),
-        regex = new RegExp('^' + namespace, 'i');
+import $ from 'jquery';
 
-      if ('undefined' === typeof $element || 'undefined' === typeof $element[0])
-        return {};
+var globalID = 1;
+var pastWarnings = {};
 
-      for (var i in $element[0].attributes) {
-        attribute = $element[0].attributes[i];
+var Utils = {
+  // Parsley DOM-API
+  // returns object from dom attributes and values
+  attr: function (element, namespace, obj) {
+    var i;
+    var attribute;
+    var attributes;
+    var regex = new RegExp('^' + namespace, 'i');
 
-        if ('undefined' !== typeof attribute && null !== attribute && (!msie || msie >= 8 || attribute.specified) && regex.test(attribute.name)) {
-          if ('undefined' !== typeof checkAttr && new RegExp(checkAttr + '$', 'i').test(attribute.name))
-            return true;
-
-          obj[this.camelize(attribute.name.replace(namespace, ''))] = this.deserializeValue(attribute.value);
-        }
+    if ('undefined' === typeof obj)
+      obj = {};
+    else {
+      // Clear all own properties. This won't affect prototype's values
+      for (i in obj) {
+        if (obj.hasOwnProperty(i))
+          delete obj[i];
       }
+    }
 
-      return 'undefined' === typeof checkAttr ? obj : false;
-    },
+    if (!element)
+      return obj;
 
-    setAttr: function ($element, namespace, attr, value) {
-      $element[0].setAttribute(this.dasherize(namespace + attr), String(value));
-    },
+    attributes = element.attributes;
+    for (i = attributes.length; i--; ) {
+      attribute = attributes[i];
 
-    // Recursive object / array getter
-    get: function (obj, path) {
-      var
-        i = 0,
-        paths = (path || '').split('.');
-
-      while (this.isObject(obj) || this.isArray(obj)) {
-        obj = obj[paths[i++]];
-        if (i === paths.length)
-          return obj;
+      if (attribute && attribute.specified && regex.test(attribute.name)) {
+        obj[this.camelize(attribute.name.slice(namespace.length))] = this.deserializeValue(attribute.value);
       }
+    }
 
-      return undefined;
+    return obj;
+  },
+
+  checkAttr: function (element, namespace, checkAttr) {
+    return element.hasAttribute(namespace + checkAttr);
+  },
+
+  setAttr: function (element, namespace, attr, value) {
+    element.setAttribute(this.dasherize(namespace + attr), String(value));
+  },
+
+  getType: function(element) {
+    return element.getAttribute('type') || 'text';
+  },
+
+  generateID: function () {
+    return '' + globalID++;
+  },
+
+  /** Third party functions **/
+  deserializeValue: function (value) {
+    var num;
+
+    try {
+      return value ?
+        value == "true" ||
+        (value == "false" ? false :
+        value == "null" ? null :
+        !isNaN(num = Number(value)) ? num :
+        /^[\[\{]/.test(value) ? JSON.parse(value) :
+        value)
+        : value;
+    } catch (e) { return value; }
+  },
+
+  // Zepto camelize function
+  camelize: function (str) {
+    return str.replace(/-+(.)?/g, function (match, chr) {
+      return chr ? chr.toUpperCase() : '';
+    });
+  },
+
+  // Zepto dasherize function
+  dasherize: function (str) {
+    return str.replace(/::/g, '/')
+      .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
+      .replace(/([a-z\d])([A-Z])/g, '$1_$2')
+      .replace(/_/g, '-')
+      .toLowerCase();
+  },
+
+  warn: function () {
+    if (window.console && 'function' === typeof window.console.warn)
+      window.console.warn(...arguments);
+  },
+
+  warnOnce: function(msg) {
+    if (!pastWarnings[msg]) {
+      pastWarnings[msg] = true;
+      this.warn(...arguments);
+    }
+  },
+
+  _resetWarnings: function () {
+    pastWarnings = {};
+  },
+
+  trimString: function(string) {
+    return string.replace(/^\s+|\s+$/g, '');
+  },
+
+  parse: {
+    date: function(string) {
+      let parsed = string.match(/^(\d{4,})-(\d\d)-(\d\d)$/);
+      if (!parsed)
+        return null;
+      let [_, year, month, day] = parsed.map(x => parseInt(x, 10));
+      let date = new Date(year, month - 1, day);
+      if (date.getFullYear() !== year || date.getMonth() + 1 !== month || date.getDate() !== day)
+        return null;
+      return date;
     },
-
-    hash: function (length) {
-      return String(Math.random()).substring(2, length ? length + 2 : 9);
+    string: function(string) {
+      return string;
     },
-
-    /** Third party functions **/
-    // Underscore isArray
-    isArray: function (mixed) {
-      return Object.prototype.toString.call(mixed) === '[object Array]';
+    integer: function(string) {
+      if (isNaN(string))
+        return null;
+      return parseInt(string, 10);
     },
-
-    // Underscore isObject
-    isObject: function (mixed) {
-      return mixed === Object(mixed);
+    number: function(string) {
+      if (isNaN(string))
+        throw null;
+      return parseFloat(string);
     },
-
-    // Zepto deserialize function
-    deserializeValue: function (value) {
-      var num;
-
-      try {
-        return value ?
-          value == "true" ||
-          (value == "false" ? false :
-          value == "null" ? null :
-          !isNaN(num = Number(value)) ? num :
-          /^[\[\{]/.test(value) ? $.parseJSON(value) :
-          value)
-          : value;
-      } catch (e) { return value; }
+    'boolean': function _boolean(string) {
+      return !(/^\s*false\s*$/i.test(string));
     },
-
-    // Zepto camelize function
-    camelize: function (str) {
-      return str.replace(/-+(.)?/g, function(match, chr) {
-        return chr ? chr.toUpperCase() : '';
-      });
+    object: function(string) {
+      return Utils.deserializeValue(string);
     },
+    regexp: function(regexp) {
+      var flags = '';
 
-    // Zepto dasherize function
-    dasherize: function (str) {
-      return str.replace(/::/g, '/')
-        .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
-        .replace(/([a-z\d])([A-Z])/g, '$1_$2')
-        .replace(/_/g, '-')
-        .toLowerCase();
-    },
+      // Test if RegExp is literal, if not, nothing to be done, otherwise, we need to isolate flags and pattern
+      if (/^\/.*\/(?:[gimy]*)$/.test(regexp)) {
+        // Replace the regexp literal string with the first match group: ([gimy]*)
+        // If no flag is present, this will be a blank string
+        flags = regexp.replace(/.*\/([gimy]*)$/, '$1');
+        // Again, replace the regexp literal string with the first match group:
+        // everything excluding the opening and closing slashes and the flags
+        regexp = regexp.replace(new RegExp('^/(.*?)/' + flags + '$'), '$1');
+      } else {
+        // Anchor regexp:
+        regexp = '^' + regexp + '$';
+      }
+      return new RegExp(regexp, flags);
+    }
+  },
 
-    // http://support.microsoft.com/kb/167820
-    // http://stackoverflow.com/questions/19999388/jquery-check-if-user-is-using-ie
-    msieversion: function () {
-      var
-        ua = window.navigator.userAgent,
-        msie = ua.indexOf('MSIE ');
+  parseRequirement: function(requirementType, string) {
+    var converter = this.parse[requirementType || 'string'];
+    if (!converter)
+      throw 'Unknown requirement specification: "' + requirementType + '"';
+    let converted = converter(string);
+    if (converted === null)
+      throw `Requirement is not a ${requirementType}: "${string}"`;
+    return converted;
+  },
 
-      if (msie > 0 || !!navigator.userAgent.match(/Trident.*rv\:11\./))
-        return parseInt(ua.substring(msie + 5, ua.indexOf('.', msie)), 10);
+  namespaceEvents: function(events, namespace) {
+    events = this.trimString(events || '').split(/\s+/);
+    if (!events[0])
+      return '';
+    return $.map(events, evt => `${evt}.${namespace}`).join(' ');
+  },
 
-      return 0;
-   }
-  };
-});
+  difference: function(array, remove) {
+    // This is O(N^2), should be optimized
+    let result = [];
+    $.each(array, (_, elem) => {
+      if (remove.indexOf(elem) == -1)
+        result.push(elem);
+    });
+    return result;
+  },
+
+  // Alter-ego to native Promise.all, but for jQuery
+  all: function(promises) {
+    // jQuery treats $.when() and $.when(singlePromise) differently; let's avoid that and add spurious elements
+    return $.when(...promises, 42, 42);
+  },
+
+  // Object.create polyfill, see https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/create#Polyfill
+  objectCreate: Object.create || (function () {
+    var Object = function () {};
+    return function (prototype) {
+      if (arguments.length > 1) {
+        throw Error('Second argument not supported');
+      }
+      if (typeof prototype != 'object') {
+        throw TypeError('Argument must be an object');
+      }
+      Object.prototype = prototype;
+      var result = new Object();
+      Object.prototype = null;
+      return result;
+    };
+  })(),
+
+  _SubmitSelector: 'input[type="submit"], button:submit'
+};
+
+export default Utils;
